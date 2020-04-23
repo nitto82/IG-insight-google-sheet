@@ -1,0 +1,142 @@
+// You can monitor multiple accounts by creating new sheets and adding to the arrays
+// Caution: The more data in your Google Spreadsheet, the longer it'll take to load
+
+// var sheetNames = [ 'Sheet 1', 'Sheet 2', 'Sheet 3' ];
+// var instagramAccounts = [ 'Account 1 ID', 'Account 2 ID', 'Account 3 ID' ];
+// You can find your ID here: https://codeofaninja.com/tools/find-instagram-user-id
+// Example: iam.alanyang's ID is 5502131244
+var sheetNames = ['dati'];
+var instagramAccounts = ['23291498657'];
+
+// Stats from last number of posts / Use value: 0-12
+var lastPosts = 12;
+
+// Adjust the time zone to be the same as the one used in your Google Sheet
+// You can find the time zone by going to your Goole Sheet. File --> Spreadsheet settings
+var timeZone = 'GMT+01:00'
+
+// =====================================================================
+// DON'T MAKE CHANGES BELOW THIS LINE UNLESS YOU KNOW WHAT YOU ARE DOING
+// =====================================================================
+
+var baseUrl = 'https://www.instagram.com/graphql/query/';
+
+function insertFollowerCount() {
+  for (var index = 0; index < sheetNames.length; index++) {
+    insertStats(index);
+  }
+}
+
+function getLastRow(column, index) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(this.sheetNames[index]);
+  var range = sheet.getRange(column + '1:' + column);
+  var values = range.getValues();
+  var newArr = [];
+  var count = 0;
+  for (var i = 0; i < range.getLastRow(); i++) {
+    if (values[i][0]) {
+      newArr.push(values[i][0]);
+    }
+  }
+  return newArr.length;
+}
+
+function insertStats(index) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(this.sheetNames[index]);
+  var currentRow = getLastRow('A', index);
+  var currentCell = sheet.getRange('A1');
+  var followers = getFollowers(this.instagramAccounts[index], lastPosts);
+  var following = getFollowing(this.instagramAccounts[index], lastPosts);
+  var media = getMedia(this.instagramAccounts[index], lastPosts);
+  var engagement = getEngagement(media, followers, lastPosts);
+
+  currentCell
+    .offset(currentRow, 0)
+    .setValue(Utilities.formatDate(new Date(), timeZone, 'MMM dd, yyyy'));
+  currentCell
+    .offset(currentRow, 1)
+    .setValue(Utilities.formatDate(new Date(), timeZone, 'E'));
+  currentCell.offset(currentRow, 2).setValue(followers);
+  currentCell
+    .offset(currentRow, 3)
+    .setValue('=IFERROR(($C' + (currentRow + 1) + '-$C' + currentRow + ');0)');
+  currentCell.offset(currentRow, 4).setValue(following);
+  currentCell
+    .offset(currentRow, 5)
+    .setValue('=IFERROR(($E' + (currentRow + 1) + '-$E' + currentRow + ');0)');
+  currentCell.offset(currentRow, 6).setValue(media.count);
+  currentCell.offset(currentRow, 7).setValue(engagement.totalLikes);
+  currentCell.offset(currentRow, 8).setValue(engagement.totalComments);
+  currentCell.offset(currentRow, 9).setValue(engagement.engagementRatio);
+  currentCell.offset(currentRow, 9).setNumberFormat('0.00%');
+  currentCell
+    .offset(currentRow, 10)
+    .setValue('=IFERROR(($J' + (currentRow + 1) + '-$J' + currentRow + ')/($J' + currentRow + ');0)');
+  currentCell.offset(currentRow, 10).setNumberFormat('0.00%');
+
+}
+
+function getFollowers(userID, amount) {
+  return parseInt(
+    fetch(
+      baseUrl +
+        '?query_hash=37479f2b8209594dde7facb0d904896a&variables=%7B%22id%22%3A%22' +
+        userID +
+        '%22%2C%22first%22%3A' +
+        amount +
+        '%7D')['data']['user']['edge_followed_by']['count']
+  );
+}
+
+function getFollowing(userID, amount) {
+  return parseInt(
+    fetch(
+      baseUrl +
+        '?query_hash=58712303d941c6855d4e888c5f0cd22f&variables=%7B%22id%22%3A%22' +
+        userID +
+        '%22%2C%22first%22%3A' +
+        amount +
+        '%7D'
+    )['data']['user']['edge_follow']['count']
+  );
+}
+
+function getMedia(userID, amount) {
+  return fetch(
+    baseUrl +
+      '?query_hash=f2405b236d85e8296cf30347c9f08c2a&variables=%7B%22id%22%3A%22' +
+      userID +
+      '%22%2C%22first%22%3A' +
+      amount +
+      '%7D'
+  )['data']['user']['edge_owner_to_timeline_media'];
+}
+
+function getEngagement(media, followers, amount) {
+  var totalComments = 0,
+    totalLikes = 0;
+  for (var i = 0; i < amount; i++) {
+    totalComments += parseInt(media.edges[i].node.edge_media_to_comment.count);
+  }
+  for (var l = 0; l < amount; l++) {
+    totalLikes += parseInt(media.edges[l].node.edge_media_preview_like.count);
+  }
+  var engagementRatio = (totalLikes + totalComments) / followers / amount;
+  return {
+    mediaCount: parseInt(media.count),
+    totalComments: totalComments,
+    totalLikes: totalLikes,
+    engagementRatio: engagementRatio,
+  };
+}
+
+function fetch(url) {
+  var ignoreError = {
+    muteHttpExcecptions: true,
+  };
+  var source = UrlFetchApp.fetch(url, ignoreError).getContentText();
+  var data = JSON.parse(source);
+  return data;
+}
