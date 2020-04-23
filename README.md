@@ -1,3 +1,3 @@
 # IG-insight-google-sheet
 
-Non so cosa sto facendo... Seguo solo il tutorial.
+What we can do with Instagram insight data and Google Sheet?
